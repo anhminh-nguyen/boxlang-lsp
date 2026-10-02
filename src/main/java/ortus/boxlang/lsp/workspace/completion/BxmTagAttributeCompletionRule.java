@@ -14,11 +14,11 @@ import ortus.boxlang.runtime.validation.Validator;
 
 /**
  * Provides completion for BXM tag attributes.
- * 
+ *
  * Triggers when inside a BXM tag after the tag name:
  * - <bx:output |
  * - <bx:thread action="|
- * 
+ *
  * Provides:
  * - Attribute names with type information
  * - Required attributes prioritized
@@ -45,6 +45,8 @@ public class BxmTagAttributeCompletionRule implements IRule<CompletionFacts, Lis
 			return;
 		}
 
+		// test
+
 		// Get already-used attributes to avoid suggesting them again
 		String	lineText		= facts.fileParseResult().readLine( facts.completionParams().getPosition().getLine() );
 		var		usedAttributes	= extractUsedAttributes( lineText );
@@ -66,7 +68,12 @@ public class BxmTagAttributeCompletionRule implements IRule<CompletionFacts, Lis
 
 		item.setLabel( attrName );
 		item.setKind( CompletionItemKind.Property );
-		item.setInsertText( attrName + "=\"$1\"$0" );
+
+		item.setInsertText( attrName + "=\"$1\"$0" );						// Default completion item suggestions
+		if ( attr.type().equalsIgnoreCase( "boolean" ) ) {
+			item.setInsertText( attrName + "=\"${1|true,false|}\"$0" );		// Boolean completion item suggestions
+		}
+
 		item.setInsertTextFormat( org.eclipse.lsp4j.InsertTextFormat.Snippet );
 
 		// Build detail showing type and required status
