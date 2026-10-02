@@ -45,8 +45,6 @@ public class BxmTagAttributeCompletionRule implements IRule<CompletionFacts, Lis
 			return;
 		}
 
-		// test
-
 		// Get already-used attributes to avoid suggesting them again
 		String	lineText		= facts.fileParseResult().readLine( facts.completionParams().getPosition().getLine() );
 		var		usedAttributes	= extractUsedAttributes( lineText );
