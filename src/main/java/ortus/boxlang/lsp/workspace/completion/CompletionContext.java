@@ -120,7 +120,7 @@ public class CompletionContext {
 
 		// Check for whether the cursor is inside the quotation marks for a BXM tag attributes
 		Matcher bxmTagAttrValueMatcher = BXM_TAG_ATTR_VALUE_PATTERN.matcher( textBeforeCursor );
-		if ( bxmTagAttrValueMatcher.find() ) {
+		if ( bxmTagAttrValueMatcher.find() && !isInsideInterpolation( bxmTagAttrValueMatcher.group( 4 ) ) ) {
 			return new CompletionContext(
 			    CompletionContextKind.BXM_TAG_ATTRIBUTE_VALUE,
 			    bxmTagAttrValueMatcher.group( 2 ), // Attribute name
@@ -541,6 +541,29 @@ public class CompletionContext {
 		}
 
 		return false;
+	}
+
+	private static boolean isInsideInterpolation( String textBeforeCursor ) {
+		boolean insideInterpolation = false;
+		for ( int i = 0; i < textBeforeCursor.length(); i++ ) {
+			char c = textBeforeCursor.charAt( i );
+
+			// Check for escape character
+			if ( c == '\\' && i + 1 < textBeforeCursor.length() ) {
+				i++; // Skip next character
+				continue;
+			}
+
+			if ( c == '#' ) {
+				if ( i + 1 < textBeforeCursor.length() && textBeforeCursor.charAt( i + 1 ) == '#' ) {
+					i++;
+					continue;
+				}
+				insideInterpolation = !insideInterpolation;
+			}
+		}
+
+		return insideInterpolation;
 	}
 
 	private static CompletionContext analyzeBxlintComment(
