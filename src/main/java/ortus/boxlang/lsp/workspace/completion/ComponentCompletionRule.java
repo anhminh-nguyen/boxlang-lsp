@@ -21,13 +21,13 @@ public class ComponentCompletionRule implements IRule<CompletionFacts, List<Comp
 
 	@Override
 	public boolean when( CompletionFacts facts ) {
-		return facts.fileParseResult().isTemplate();
+		return facts.fileParseResult().isTemplate() && facts.getContext().getKind() != CompletionContextKind.BXM_TAG_ATTRIBUTE_VALUE;
 	}
 
 	@Override
 	public void then( CompletionFacts facts, List<CompletionItem> result ) {
 		var	existingPrompt	= getExistingPrompt(
-		    facts.fileParseResult().readLine( facts.completionParams().getPosition().getLine() - 1 ),
+		    facts.fileParseResult().readLine( facts.completionParams().getPosition().getLine() ),
 		    facts.completionParams().getPosition().getCharacter() );
 		var	options			= Stream.of( BoxRuntime.getInstance().getComponentService().getComponentNames() ).map( ( name ) -> {
 								ComponentDescriptor	componentDescriptor	= BoxRuntime.getInstance().getComponentService()
