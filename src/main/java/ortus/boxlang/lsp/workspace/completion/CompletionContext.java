@@ -22,25 +22,29 @@ public class CompletionContext {
 
 	// Patterns for detecting context from text
 	// Note: \s* used (not \s+) to match even when cursor is immediately after keyword
-	private static final Pattern		NEW_PATTERN				= Pattern.compile( "\\bnew\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
-	private static final Pattern		IMPORT_PATTERN			= Pattern.compile( "^\\s*import\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
-	private static final Pattern		EXTENDS_PATTERN			= Pattern.compile( "\\bextends\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
-	private static final Pattern		IMPLEMENTS_PATTERN		= Pattern.compile( "\\bimplements\\s*(\\w[\\w\\d\\$\\-_,\\s\\.]*)?$",
+	private static final Pattern		NEW_PATTERN					= Pattern.compile( "\\bnew\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
+	private static final Pattern		IMPORT_PATTERN				= Pattern.compile( "^\\s*import\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
+	private static final Pattern		EXTENDS_PATTERN				= Pattern.compile( "\\bextends\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
+	private static final Pattern		IMPLEMENTS_PATTERN			= Pattern.compile( "\\bimplements\\s*(\\w[\\w\\d\\$\\-_,\\s\\.]*)?$",
 	    Pattern.CASE_INSENSITIVE );
 	// Member access matches: identifier., identifier.partial, expr().partial, etc.
 	// The receiver group captures what's before the last dot (simplified - may include parens)
-	private static final Pattern		MEMBER_ACCESS_PATTERN	= Pattern.compile( "([\\w\\d\\$_\\)\\]]+)\\s*\\.\\s*(\\w[\\w\\d\\$_]*)?$" );
-	private static final Pattern		BXM_TAG_PATTERN			= Pattern.compile( "<bx:(\\w*)$", Pattern.CASE_INSENSITIVE );
+	private static final Pattern		MEMBER_ACCESS_PATTERN		= Pattern.compile( "([\\w\\d\\$_\\)\\]]+)\\s*\\.\\s*(\\w[\\w\\d\\$_]*)?$" );
+	private static final Pattern		BXM_TAG_PATTERN				= Pattern.compile( "<bx:(\\w*)$", Pattern.CASE_INSENSITIVE );
 	// Pattern for BXM tag attributes: <bx:tagname followed by space and optional partial attribute name
 	// Captures: group(1) = tag name, group(2) = partial attribute name (if any)
-	private static final Pattern		BXM_TAG_ATTR_PATTERN	= Pattern.compile( "<bx:(\\w+)\\s+(?:[\\w\\-]+=[\"'][^\"']*[\"']\\s+)*([\\w\\-]*)$",
+	private static final Pattern		BXM_TAG_ATTR_PATTERN		= Pattern.compile( "<bx:(\\w+)\\s+(?:[\\w\\-]+=[\"'][^\"']*[\"']\\s+)*([\\w\\-]*)$",
 	    Pattern.CASE_INSENSITIVE );
-	private static final Pattern		TEMPLATE_EXPR_PATTERN	= Pattern.compile( "#(\\w*)$" );
-	private static final Pattern		IDENTIFIER_PATTERN		= Pattern.compile( "(\\w+)$" );
-	private static final String			SINGLE_LINE_COMMENT		= "//";
-	private static final String			TEMPLATE_COMMENT		= "<!--";
-	private static final Pattern		BXLINT_COMMENT_PATTERN	= Pattern.compile(
+	private static final Pattern		TEMPLATE_EXPR_PATTERN		= Pattern.compile( "#(\\w*)$" );
+	private static final Pattern		IDENTIFIER_PATTERN			= Pattern.compile( "(\\w+)$" );
+	private static final String			SINGLE_LINE_COMMENT			= "//";
+	private static final String			TEMPLATE_COMMENT			= "<!--";
+	private static final Pattern		BXLINT_COMMENT_PATTERN		= Pattern.compile(
 	    "^\\s*(?://\\s*|<!---?\\s*)bxlint(?::|-)(?:disable|enable|disable-for-function|disable-for-class|enable-for-function|enable-for-class)(?:\\s+(.*?))?\\s*(?:--+>)?$",
+	    Pattern.CASE_INSENSITIVE
+	);
+	private static final Pattern		BXM_TAG_ATTR_VALUE_PATTERN	= Pattern.compile(
+	    "<bx:(\\w+)(?:\\s+[\\w\\-]+=[\"'][^\"']*[\"'])*\\s+([\\w\\-]+)\\s*=\\s*([\"'])([^\"']*)$",
 	    Pattern.CASE_INSENSITIVE
 	);
 
@@ -101,7 +105,36 @@ public class CompletionContext {
 			return bxlintCommentContext;
 		}
 
-		if ( isInsideStringLiteral( textBeforeCursor ) || isInsideComment( lineText, cursorCol ) ) {
+		if ( isInsideComment( lineText, cursorCol ) ) {
+			return new CompletionContext(
+			    CompletionContextKind.NONE,
+			    "",
+			    null,
+			    containingMethodName,
+			    containingClassName,
+			    -1,
+			    cursorPosition,
+			    fileParseResult
+			);
+		}
+
+		// Check for whether the cursor is inside the quotation marks for a BXM tag attributes
+		Matcher bxmTagAttrValueMatcher = BXM_TAG_ATTR_VALUE_PATTERN.matcher( textBeforeCursor );
+		if ( bxmTagAttrValueMatcher.find() ) {
+			return new CompletionContext(
+			    CompletionContextKind.BXM_TAG_ATTRIBUTE_VALUE,
+			    bxmTagAttrValueMatcher.group( 2 ), // Attribute name
+			    bxmTagAttrValueMatcher.group( 1 ), // Tag name
+			    containingMethodName,
+			    containingClassName,
+			    -1,
+			    cursorPosition,
+			    fileParseResult
+			);
+		}
+
+		// This has to run after template value checks to allow autocompletion within the quotation marks for BXM tags
+		if ( isInsideStringLiteral( textBeforeCursor ) ) {
 			return new CompletionContext(
 			    CompletionContextKind.NONE,
 			    "",
