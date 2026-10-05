@@ -1,7 +1,6 @@
 package ortus.boxlang.lsp;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
@@ -28,7 +27,7 @@ import ortus.boxlang.runtime.BoxRuntime;
  * Tests cover:
  * - Tag name completion after <bx:
  * - Attribute name completion within tags
- * - Attribute value completion for known attributes
+ * - Attribute value context filtering
  * - Self-closing vs container tags
  * - Required vs optional attributes
  */
@@ -89,7 +88,7 @@ public class BxmTagCompletionTest extends BaseTest {
 	@Test
 	@DisplayName( "Should complete tag names with partial match" )
 	void testPartialTagNameCompletion() {
-		List<CompletionItem>	items		= getCompletionsAt( 9, 9 );
+		List<CompletionItem>	items		= getCompletionsAt( 9, 8 );
 
 		// Should still offer all tags but output should match
 		CompletionItem			outputTag	= findCompletion( items, "bx:output" );
@@ -127,14 +126,15 @@ public class BxmTagCompletionTest extends BaseTest {
 	}
 
 	@Test
-	@DisplayName( "Should complete attribute values for known attributes" )
+	@DisplayName( "Should not suggest tags inside an attribute value" )
 	void testAttributeValueCompletion() {
 		// Position: Line 18 (0-indexed), inside "<bx:output encodefor=\""
 		List<CompletionItem> items = getCompletionsAt( 18, 27 );
 
-		// Should have value completions if the attribute has known values
-		// Note: Exact values depend on BoxRuntime metadata
-		assertThat( items ).isNotEmpty();
+		assertThat( items.stream()
+		    .map( CompletionItem::getLabel )
+		    .filter( label -> label.startsWith( "bx:" ) )
+		    .toList() ).isEmpty();
 	}
 
 	@Test
@@ -145,8 +145,7 @@ public class BxmTagCompletionTest extends BaseTest {
 
 		// Required attributes should have better sort order
 		// They should be marked with (required) in detail or have special sorting
-		List<CompletionItem>	sortedItems	= items.stream()
-		    .filter( item -> item.getKind() == CompletionItemKind.Property )
+		List<CompletionItem>	sortedItems	= items.stream().filter( item -> item.getKind() == CompletionItemKind.Property )
 		    .sorted( ( a, b ) -> a.getSortText().compareTo( b.getSortText() ) )
 		    .toList();
 
@@ -165,7 +164,6 @@ public class BxmTagCompletionTest extends BaseTest {
 		long attributeCount = items.stream()
 		    .filter( item -> item.getKind() == CompletionItemKind.Property )
 		    .count();
-
 		assertThat( attributeCount ).isGreaterThan( 0 );
 	}
 
@@ -242,4 +240,5 @@ public class BxmTagCompletionTest extends BaseTest {
 		    .findFirst()
 		    .orElse( null );
 	}
+
 }

@@ -96,7 +96,7 @@ public class CompletionsTest {
 
 		CompletionParams		c	= new CompletionParams();
 		TextDocumentIdentifier	td	= new TextDocumentIdentifier( p.toUri().toString() );
-		c.setPosition( new Position( 5, 7 ) );
+		c.setPosition( new Position( 4, 7 ) );
 		c.setTextDocument( td );
 		List<CompletionItem> completionItems = pcp.getAvailableCompletions( f.toURI(), c );
 		assertFalse( completionItems.isEmpty(), "Completion items should not be empty." );
