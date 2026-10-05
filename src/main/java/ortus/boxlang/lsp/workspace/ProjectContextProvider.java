@@ -3160,8 +3160,10 @@ public class ProjectContextProvider {
 		// TODO if you are in a cfset return script completions
 		// TODO add completions for in-scope symbols (properties, local variables,
 
+		DocumentModel currentDocument = documentModels.get( docURI );
+
 		return getLatestFileParseResult( docURI ).map( ( res ) -> {
-			return CompletionProviderRuleBook.execute( new CompletionFacts( res, params ) );
+			return CompletionProviderRuleBook.execute( new CompletionFacts( res, params, currentDocument ) );
 		} ).orElseGet( () -> new ArrayList<CompletionItem>() );
 	}
 

@@ -22,24 +22,26 @@ public class CompletionContext {
 
 	// Patterns for detecting context from text
 	// Note: \s* used (not \s+) to match even when cursor is immediately after keyword
-	private static final Pattern		NEW_PATTERN				= Pattern.compile( "\\bnew\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
-	private static final Pattern		IMPORT_PATTERN			= Pattern.compile( "^\\s*import\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
-	private static final Pattern		EXTENDS_PATTERN			= Pattern.compile( "\\bextends\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
-	private static final Pattern		IMPLEMENTS_PATTERN		= Pattern.compile( "\\bimplements\\s*(\\w[\\w\\d\\$\\-_,\\s\\.]*)?$",
+	private static final Pattern		NEW_PATTERN					= Pattern.compile( "\\bnew\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
+	private static final Pattern		IMPORT_PATTERN				= Pattern.compile( "^\\s*import\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
+	private static final Pattern		EXTENDS_PATTERN				= Pattern.compile( "\\bextends\\s*(\\w[\\w\\d\\$\\-_\\.]*)?$", Pattern.CASE_INSENSITIVE );
+	private static final Pattern		IMPLEMENTS_PATTERN			= Pattern.compile( "\\bimplements\\s*(\\w[\\w\\d\\$\\-_,\\s\\.]*)?$",
 	    Pattern.CASE_INSENSITIVE );
 	// Member access matches: identifier., identifier.partial, expr().partial, etc.
 	// The receiver group captures what's before the last dot (simplified - may include parens)
-	private static final Pattern		MEMBER_ACCESS_PATTERN	= Pattern.compile( "([\\w\\d\\$_\\)\\]]+)\\s*\\.\\s*(\\w[\\w\\d\\$_]*)?$" );
-	private static final Pattern		BXM_TAG_PATTERN			= Pattern.compile( "<bx:(\\w*)$", Pattern.CASE_INSENSITIVE );
+	private static final Pattern		MEMBER_ACCESS_PATTERN		= Pattern.compile( "([\\w\\d\\$_\\)\\]]+)\\s*\\.\\s*(\\w[\\w\\d\\$_]*)?$" );
+	private static final Pattern		BXM_TAG_PATTERN				= Pattern.compile( "<bx:(\\w*)$", Pattern.CASE_INSENSITIVE );
 	// Pattern for BXM tag attributes: <bx:tagname followed by space and optional partial attribute name
 	// Captures: group(1) = tag name, group(2) = partial attribute name (if any)
-	private static final Pattern		BXM_TAG_ATTR_PATTERN	= Pattern.compile( "<bx:(\\w+)\\s+(?:[\\w\\-]+=[\"'][^\"']*[\"']\\s+)*([\\w\\-]*)$",
+	private static final Pattern		BXM_TAG_ATTR_PATTERN		= Pattern.compile( "<bx:(\\w+)\\s+(?:[\\w\\-]+=[\"'][^\"']*[\"']\\s+)*([\\w\\-]*)$",
 	    Pattern.CASE_INSENSITIVE );
-	private static final Pattern		TEMPLATE_EXPR_PATTERN	= Pattern.compile( "#(\\w*)$" );
-	private static final Pattern		IDENTIFIER_PATTERN		= Pattern.compile( "(\\w+)$" );
-	private static final String			SINGLE_LINE_COMMENT		= "//";
-	private static final String			TEMPLATE_COMMENT		= "<!--";
-	private static final Pattern		BXLINT_COMMENT_PATTERN	= Pattern.compile(
+	private static final Pattern		BXM_TAG_ATTR_VALUE_PATTERN	= Pattern.compile( "<bx:(\\w+)[^>]*?([\\w\\-]+)\\s*=\\s*(?:\"([^\"]*)|'([^']*))$",
+	    Pattern.CASE_INSENSITIVE );
+	private static final Pattern		TEMPLATE_EXPR_PATTERN		= Pattern.compile( "#(\\w*)$" );
+	private static final Pattern		IDENTIFIER_PATTERN			= Pattern.compile( "(\\w+)$" );
+	private static final String			SINGLE_LINE_COMMENT			= "//";
+	private static final String			TEMPLATE_COMMENT			= "<!--";
+	private static final Pattern		BXLINT_COMMENT_PATTERN		= Pattern.compile(
 	    "^\\s*(?://\\s*|<!---?\\s*)bxlint(?::|-)(?:disable|enable|disable-for-function|disable-for-class|enable-for-function|enable-for-class)(?:\\s+(.*?))?\\s*(?:--+>)?$",
 	    Pattern.CASE_INSENSITIVE
 	);
@@ -53,6 +55,7 @@ public class CompletionContext {
 	private final int					argumentIndex;
 	private final Position				cursorPosition;
 	private final FileParseResult		fileParseResult;
+	private final String				attributeName;
 
 	/**
 	 * Private constructor - use analyze() factory method
@@ -74,6 +77,29 @@ public class CompletionContext {
 		this.argumentIndex			= argumentIndex;
 		this.cursorPosition			= cursorPosition;
 		this.fileParseResult		= fileParseResult;
+		this.attributeName			= null;
+	}
+
+	private CompletionContext(
+	    CompletionContextKind kind,
+	    String triggerText,
+	    String receiverText,
+	    String containingMethodName,
+	    String containingClassName,
+	    int argumentIndex,
+	    Position cursorPosition,
+	    FileParseResult fileParseResult,
+	    String attributeName ) {
+
+		this.kind					= kind;
+		this.triggerText			= triggerText;
+		this.receiverText			= receiverText;
+		this.containingMethodName	= containingMethodName;
+		this.containingClassName	= containingClassName;
+		this.argumentIndex			= argumentIndex;
+		this.cursorPosition			= cursorPosition;
+		this.fileParseResult		= fileParseResult;
+		this.attributeName			= attributeName;
 	}
 
 	/**
@@ -85,8 +111,21 @@ public class CompletionContext {
 	 * @return A CompletionContext describing the current context
 	 */
 	public static CompletionContext analyze( FileParseResult fileParseResult, CompletionParams params ) {
+		return analyze( fileParseResult, params, fileParseResult.readLine( params.getPosition().getLine() ) );
+	}
+
+	/**
+	 * Analyze completion context using current editor text while retaining the
+	 * latest parsed snapshot for AST-based context.
+	 *
+	 * @param fileParseResult The latest parsed file
+	 * @param params          The completion parameters from the client
+	 * @param lineText        The current, unsaved editor line
+	 *
+	 * @return A CompletionContext describing the current context
+	 */
+	public static CompletionContext analyze( FileParseResult fileParseResult, CompletionParams params, String lineText ) {
 		Position			cursorPosition			= params.getPosition();
-		String				lineText				= fileParseResult.readLine( cursorPosition.getLine() );
 		int					cursorCol				= cursorPosition.getCharacter();
 		String				textBeforeCursor		= lineText.substring( 0, Math.min( cursorCol, lineText.length() ) );
 
@@ -101,17 +140,40 @@ public class CompletionContext {
 			return bxlintCommentContext;
 		}
 
+		// Check for BXM attribute value context before filtering string literals
+		if ( fileParseResult.isTemplate() && !isInsideComment( lineText, cursorCol ) ) {
+			Matcher	bxmAttrValueMatcher	= BXM_TAG_ATTR_VALUE_PATTERN.matcher( textBeforeCursor );
+
+			boolean	matched				= bxmAttrValueMatcher.find();
+
+			if ( matched && !isInsideStringLiteral( textBeforeCursor.substring( 0, bxmAttrValueMatcher.start() ) ) ) {
+				String	tagName			= bxmAttrValueMatcher.group( 1 );
+				String	attributeName	= bxmAttrValueMatcher.group( 2 );
+
+				String	partialValue	= bxmAttrValueMatcher.group( 3 ) != null
+				    ? bxmAttrValueMatcher.group( 3 )
+				    : bxmAttrValueMatcher.group( 4 );
+
+				if ( partialValue.indexOf( '#' ) >= 0 ) {
+					return noCompletionContext( containingMethodName, containingClassName, cursorPosition, fileParseResult );
+				}
+
+				return new CompletionContext(
+				    CompletionContextKind.BXM_TAG_ATTRIBUTE_VALUE,
+				    partialValue,
+				    tagName,
+				    containingMethodName,
+				    containingClassName,
+				    -1,
+				    cursorPosition,
+				    fileParseResult,
+				    attributeName
+				);
+			}
+		}
+
 		if ( isInsideStringLiteral( textBeforeCursor ) || isInsideComment( lineText, cursorCol ) ) {
-			return new CompletionContext(
-			    CompletionContextKind.NONE,
-			    "",
-			    null,
-			    containingMethodName,
-			    containingClassName,
-			    -1,
-			    cursorPosition,
-			    fileParseResult
-			);
+			return noCompletionContext( containingMethodName, containingClassName, cursorPosition, fileParseResult );
 		}
 
 		// Check for BXM-specific contexts in template files
@@ -283,6 +345,23 @@ public class CompletionContext {
 		return new CompletionContext(
 		    CompletionContextKind.GENERAL,
 		    triggerText,
+		    null,
+		    containingMethodName,
+		    containingClassName,
+		    -1,
+		    cursorPosition,
+		    fileParseResult
+		);
+	}
+
+	private static CompletionContext noCompletionContext(
+	    String containingMethodName,
+	    String containingClassName,
+	    Position cursorPosition,
+	    FileParseResult fileParseResult ) {
+		return new CompletionContext(
+		    CompletionContextKind.NONE,
+		    "",
 		    null,
 		    containingMethodName,
 		    containingClassName,
@@ -621,6 +700,13 @@ public class CompletionContext {
 	 */
 	public String getReceiverText() {
 		return receiverText;
+	}
+
+	/**
+	 * Get the BXM attribute name when completing an attribute value.
+	 */
+	public String getAttributeName() {
+		return attributeName;
 	}
 
 	/**

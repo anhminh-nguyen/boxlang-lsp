@@ -61,6 +61,12 @@ public enum CompletionContextKind {
 	BXM_TAG_ATTRIBUTE,
 
 	/**
+	 * BXM tag attribute value context: {@code <bx:tagname attr="">} or {@code <bx:tagname attr=''>}
+	 * Complete with: valid values for the attribute
+	 */
+	BXM_TAG_ATTRIBUTE_VALUE,
+
+	/**
 	 * Template expression: `#` or `#partial` inside BXM
 	 * Complete with: variables, functions
 	 */

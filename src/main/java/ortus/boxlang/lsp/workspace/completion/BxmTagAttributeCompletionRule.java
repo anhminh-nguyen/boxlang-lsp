@@ -1,10 +1,15 @@
 package ortus.boxlang.lsp.workspace.completion;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Stream;
 
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
+import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.TextEdit;
+import org.eclipse.lsp4j.jsonrpc.messages.Either;
 
 import ortus.boxlang.lsp.workspace.rules.IRule;
 import ortus.boxlang.runtime.BoxRuntime;
@@ -28,13 +33,19 @@ public class BxmTagAttributeCompletionRule implements IRule<CompletionFacts, Lis
 
 	@Override
 	public boolean when( CompletionFacts facts ) {
-		return facts.getContext().getKind() == CompletionContextKind.BXM_TAG_ATTRIBUTE;
+		CompletionContextKind kind = facts.getContext().getKind();
+
+		return kind == CompletionContextKind.BXM_TAG_ATTRIBUTE
+		    || kind == CompletionContextKind.BXM_TAG_ATTRIBUTE_VALUE;
 	}
 
 	@Override
 	public void then( CompletionFacts facts, List<CompletionItem> result ) {
+
+		CompletionContext	context	= facts.getContext();
+
 		// Get the tag name from the receiver text (stored in context)
-		String tagName = facts.getContext().getReceiverText();
+		String				tagName	= context.getReceiverText();
 		if ( tagName == null || tagName.isEmpty() ) {
 			return;
 		}
@@ -45,14 +56,81 @@ public class BxmTagAttributeCompletionRule implements IRule<CompletionFacts, Lis
 			return;
 		}
 
+		// Add value completion for attribute value
+		if ( context.getKind() == CompletionContextKind.BXM_TAG_ATTRIBUTE_VALUE ) {
+			addAttributeValueCompletions( context, descriptor, result );
+			return;
+		}
+
 		// Get already-used attributes to avoid suggesting them again
-		String	lineText		= facts.fileParseResult().readLine( facts.completionParams().getPosition().getLine() );
+		String	lineText		= facts.readLine( facts.completionParams().getPosition().getLine() );
 		var		usedAttributes	= extractUsedAttributes( lineText );
 
 		// Add attribute completions
 		Stream.of( descriptor.getComponent().getDeclaredAttributes() )
 		    .filter( attr -> !usedAttributes.contains( attr.name().getName().toLowerCase() ) )
 		    .forEach( attr -> result.add( createAttributeCompletion( attr ) ) );
+	}
+
+	/**
+	 * Create a completion item for an attribute value.
+	 */
+	private void addAttributeValueCompletions(
+	    CompletionContext context,
+	    ComponentDescriptor descriptor,
+	    List<CompletionItem> result ) {
+
+		String attributeName = context.getAttributeName();
+
+		if ( attributeName == null || attributeName.isEmpty() ) {
+			return;
+		}
+
+		Attribute attribute = Stream.of(
+		    descriptor.getComponent().getDeclaredAttributes()
+		)
+		    .filter( attr -> attr.name().getName().equalsIgnoreCase( attributeName ) )
+		    .findFirst()
+		    .orElse( null );
+
+		if ( attribute == null ) {
+			return;
+		}
+
+		if ( !"boolean".equalsIgnoreCase( attribute.type() ) ) {
+			return;
+		}
+
+		String partialValue = context.getTriggerText().toLowerCase( Locale.ROOT );
+
+		Stream.of( "true", "false" )
+		    .filter( value -> value.startsWith( partialValue ) )
+		    .map( value -> createValueCompletion( value, context ) )
+		    .forEach( result::add );
+	}
+
+	/**
+	 * Add value completions for a BXM tag attribute.
+	 */
+	private CompletionItem createValueCompletion( String value, CompletionContext context ) {
+		CompletionItem	item			= new CompletionItem();
+		Position		cursor			= context.getCursorPosition();
+		int				valueStart		= Math.max( 0, cursor.getCharacter() - context.getTriggerText().length() );
+		Range			replaceRange	= new Range(
+		    new Position( cursor.getLine(), valueStart ),
+		    new Position( cursor.getLine(), cursor.getCharacter() )
+		);
+
+		item.setLabel( value );
+		item.setKind( CompletionItemKind.Value );
+		item.setTextEdit( Either.forLeft( new TextEdit( replaceRange, value ) ) );
+
+		return item;
+	}
+
+	@Override
+	public boolean stop() {
+		return true;
 	}
 
 	/**

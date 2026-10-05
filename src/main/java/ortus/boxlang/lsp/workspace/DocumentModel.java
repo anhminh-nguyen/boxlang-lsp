@@ -137,10 +137,11 @@ public class DocumentModel {
 	 * 
 	 * @return The line content, or empty string if line doesn't exist
 	 */
-	public String getLine( int lineNumber ) {
+	public synchronized String getLine( int lineNumber ) {
 		String[] lines = content.split( "\n", -1 );
 		if ( lineNumber >= 0 && lineNumber < lines.length ) {
-			return lines[ lineNumber ];
+			String line = lines[ lineNumber ];
+			return line.endsWith( "\r" ) ? line.substring( 0, line.length() - 1 ) : line;
 		}
 		return "";
 	}
