@@ -10,3 +10,4 @@
 <bx:setting showDebugOutput="#">
 <div class="">
 <bx:setting    SHOWDEBUGOUTPUT     =     ""> 
+<bx:setting showDebugOutput='xyz|'>"

@@ -309,6 +309,13 @@ public class BxmTagCompletionTest extends BaseTest {
 		assertBooleanValueCompletions( 11, 42, 42, List.of( "true", "false" ) );
 	}
 
+	@Test
+	@DisplayName( "Should not suggest values when the typed value matches neither true nor false" )
+	void testNoValueCompletionForNonMatchingValue() {
+		// Line 12: <bx:setting showDebugOutput='xyz|'>
+		assertThat( getCompletionsAt( booleanValuesPath, 12, 32 ) ).isEmpty();
+	}
+
 	/**
 	 * Assert that none of the completions are the boolean value suggestions.
 	 * Other rules may still contribute items in these positions, so only true/false are checked.
