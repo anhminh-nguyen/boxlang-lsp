@@ -305,7 +305,7 @@ public class BxmTagCompletionTest extends BaseTest {
 	@Test
 	@DisplayName( "Should complete true/false when there is extra whitespace around the attribute name and equals sign" )
 	void testBooleanValueCompletionExtraWhitespace() {
-		// Line 11: <bx:setting    SHOWDEBUGOUT     =     "|">
+		// Line 11: <bx:setting SHOWDEBUGOUTPUT = "|"> with whitespaces around the attribute name and equals sign
 		assertBooleanValueCompletions( 11, 42, 42, List.of( "true", "false" ) );
 	}
 
