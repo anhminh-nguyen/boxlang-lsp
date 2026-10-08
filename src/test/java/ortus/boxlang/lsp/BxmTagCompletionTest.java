@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.stream.Stream;
 
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -18,6 +19,9 @@ import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import ortus.boxlang.lsp.workspace.ProjectContextProvider;
 import ortus.boxlang.runtime.BoxRuntime;
@@ -217,6 +221,40 @@ public class BxmTagCompletionTest extends BaseTest {
 		    .orElse( null );
 
 		assertThat( tagItem ).isNotNull();
+	}
+
+	@ParameterizedTest( name = "{0}" )
+	@MethodSource( "booleanAttributeValues" )
+	@DisplayName( "BLIDE-317: suggest exactly the matching boolean attribute values" )
+	void testBooleanAttributeValues( String source, List<String> expectedLabels ) {
+		var uri = projectRoot.resolve( "src/test/resources/files/bxmTagCompletionTest/booleanValues.bxm" ).toUri();
+		pcp.trackDocumentOpen( uri, source.replace( "|", "" ) );
+		try {
+			List<CompletionItem> items = pcp.getAvailableCompletions( uri,
+			    new CompletionParams( new TextDocumentIdentifier( uri.toString() ), new Position( 0, source.indexOf( '|' ) ) ) );
+			assertThat( items.stream().map( CompletionItem::getLabel ).toList() ).containsExactlyElementsIn( expectedLabels );
+			for ( CompletionItem item : items ) {
+				assertThat( item.getKind() ).isEqualTo( CompletionItemKind.Value );
+				assertThat( item.getInsertText() ).isEqualTo( item.getLabel() );
+			}
+		} finally {
+			pcp.trackDocumentClose( uri );
+		}
+	}
+
+	static Stream<Arguments> booleanAttributeValues() {
+		return Stream.of(
+		    Arguments.of( "<bx:setting showDebugOutput=\"|\">", List.of( "true", "false" ) ),
+		    Arguments.of( "<bx:setting showDebugOutput='|'>", List.of( "true", "false" ) ),
+		    Arguments.of( "<bx:setting showDebugOutput=\"|", List.of( "true", "false" ) ),
+		    Arguments.of( "<BX:SETTING SHOWDEBUGOUTPUT = '|'>", List.of( "true", "false" ) ),
+		    Arguments.of( "<bx:lock name=\"test\" throwOnTimeout='|'>", List.of( "true", "false" ) ),
+		    Arguments.of( "<bx:setting showDebugOutput=\"tr|\">", List.of( "true" ) ),
+		    Arguments.of( "<bx:setting showDebugOutput='fa|'>", List.of( "false" ) ),
+		    Arguments.of( "<bx:setting showDebugOutput='xyz|'>", List.of() ),
+		    Arguments.of( "<bx:setting requestTimeout='|'>", List.of() ),
+		    Arguments.of( "<bx:setting isBoolean='|'>", List.of() )
+		);
 	}
 
 	/**
