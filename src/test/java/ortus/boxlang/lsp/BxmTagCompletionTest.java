@@ -14,7 +14,9 @@ import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
+import org.eclipse.lsp4j.TextEdit;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,19 +40,23 @@ public class BxmTagCompletionTest extends BaseTest {
 	private static Path						projectRoot;
 	private static Path						templatePath;
 	private static File						templateFile;
+	private static Path						booleanValuesPath;
 
 	@BeforeAll
 	static void loadFixtures() {
-		instance		= BoxRuntime.getInstance( true );
-		pcp				= ProjectContextProvider.getInstance();
-		projectRoot		= Paths.get( System.getProperty( "user.dir" ) );
-		templatePath	= projectRoot.resolve( "src/test/resources/files/bxmTagCompletionTest/simpleTemplate.bxm" );
-		templateFile	= templatePath.toFile();
+		instance			= BoxRuntime.getInstance( true );
+		pcp					= ProjectContextProvider.getInstance();
+		projectRoot			= Paths.get( System.getProperty( "user.dir" ) );
+		templatePath		= projectRoot.resolve( "src/test/resources/files/bxmTagCompletionTest/simpleTemplate.bxm" );
+		templateFile		= templatePath.toFile();
+		booleanValuesPath	= projectRoot.resolve( "src/test/resources/files/bxmTagCompletionTest/booleanAttributeValues.bxm" );
 
 		assertTrue( templateFile.exists(), "Test file does not exist: " + templatePath.toString() );
+		assertTrue( booleanValuesPath.toFile().exists(), "Test file does not exist: " + booleanValuesPath.toString() );
 
 		try {
 			pcp.trackDocumentOpen( templatePath.toUri(), Files.readString( templatePath ) );
+			pcp.trackDocumentOpen( booleanValuesPath.toUri(), Files.readString( booleanValuesPath ) );
 		} catch ( IOException e ) {
 			e.printStackTrace();
 		}
@@ -219,16 +225,133 @@ public class BxmTagCompletionTest extends BaseTest {
 		assertThat( tagItem ).isNotNull();
 	}
 
+	@Test
+	@DisplayName( "Should complete true/false inside a double-quoted boolean attribute value" )
+	void testBooleanValueCompletionDoubleQuotes() {
+		// Line 0: <bx:setting showDebugOutput="|">
+		assertBooleanValueCompletions( 0, 29, 29, List.of( "true", "false" ) );
+	}
+
+	@Test
+	@DisplayName( "Should complete true/false inside a single-quoted boolean attribute value" )
+	void testBooleanValueCompletionSingleQuotes() {
+		// Line 1: <bx:setting showDebugOutput='|'>
+		assertBooleanValueCompletions( 1, 29, 29, List.of( "true", "false" ) );
+	}
+
+	@Test
+	@DisplayName( "Should match tag and attribute names case-insensitively" )
+	void testBooleanValueCompletionCaseInsensitive() {
+		// Line 2: <BX:SETTING SHOWDEBUGOUTPUT="|">
+		assertBooleanValueCompletions( 2, 29, 29, List.of( "true", "false" ) );
+	}
+
+	@Test
+	@DisplayName( "Should filter boolean values by the typed prefix and replace it" )
+	void testBooleanValueCompletionPartialValue() {
+		// Line 3: <bx:setting showDebugOutput="tr|"> - the edit must replace "tr", not append to it
+		assertBooleanValueCompletions( 3, 29, 31, List.of( "true" ) );
+	}
+
+	@Test
+	@DisplayName( "Should complete a boolean attribute that follows other attributes" )
+	void testBooleanValueCompletionAfterOtherAttributes() {
+		// Line 4: <bx:setting requestTimeout="30" enableOutputOnly="|">
+		assertBooleanValueCompletions( 4, 50, 50, List.of( "true", "false" ) );
+	}
+
+	@Test
+	@DisplayName( "Should not suggest values for a non-boolean attribute" )
+	void testNoValueCompletionForNonBooleanAttribute() {
+		// Line 5: <bx:setting requestTimeout="|"> - requestTimeout is declared as long
+		assertThat( getCompletionsAt( booleanValuesPath, 5, 28 ) ).isEmpty();
+	}
+
+	@Test
+	@DisplayName( "Should not suggest values for an unknown attribute" )
+	void testNoValueCompletionForUnknownAttribute() {
+		// Line 6: <bx:setting madeUpAttr="|">
+		assertThat( getCompletionsAt( booleanValuesPath, 6, 24 ) ).isEmpty();
+	}
+
+	@Test
+	@DisplayName( "Should not suggest values for an unknown tag" )
+	void testNoValueCompletionForUnknownTag() {
+		// Line 7: <bx:notARealTag showDebugOutput="|">
+		assertThat( getCompletionsAt( booleanValuesPath, 7, 33 ) ).isEmpty();
+	}
+
+	@Test
+	@DisplayName( "Should not suggest boolean values inside a comment" )
+	void testNoBooleanValuesInsideComment() {
+		// Line 8: <!-- <bx:setting showDebugOutput="|"> -->
+		assertNoBooleanValues( getCompletionsAt( booleanValuesPath, 8, 34 ) );
+	}
+
+	@Test
+	@DisplayName( "Should not suggest boolean values inside an interpolated expression" )
+	void testNoBooleanValuesInsideInterpolation() {
+		// Line 9: <bx:setting showDebugOutput="#|">
+		assertNoBooleanValues( getCompletionsAt( booleanValuesPath, 9, 30 ) );
+	}
+
+	@Test
+	@DisplayName( "Should not suggest boolean values inside an ordinary string" )
+	void testNoBooleanValuesInsideOrdinaryString() {
+		// Line 10: <div class="|">
+		assertNoBooleanValues( getCompletionsAt( booleanValuesPath, 10, 12 ) );
+	}
+
+	/**
+	 * Assert that none of the completions are the boolean value suggestions.
+	 * Other rules may still contribute items in these positions, so only true/false are checked.
+	 */
+	private void assertNoBooleanValues( List<CompletionItem> items ) {
+		assertThat( items.stream().map( CompletionItem::getLabel ).toList() ).containsNoneOf( "true", "false" );
+	}
+
+	/**
+	 * Assert that the completions at the cursor in the boolean values fixture are exactly the expected
+	 * values, each a Value item whose edit replaces the typed part of the attribute value.
+	 *
+	 * @param line           0-indexed line in booleanAttributeValues.bxm
+	 * @param valueStartCol  column just after the opening quote
+	 * @param cursorCol      column of the cursor
+	 * @param expectedLabels the exact labels expected
+	 */
+	private void assertBooleanValueCompletions( int line, int valueStartCol, int cursorCol, List<String> expectedLabels ) {
+		List<CompletionItem> items = getCompletionsAt( booleanValuesPath, line, cursorCol );
+
+		assertThat( items.stream().map( CompletionItem::getLabel ).toList() ).containsExactlyElementsIn( expectedLabels );
+
+		for ( CompletionItem item : items ) {
+			assertThat( item.getKind() ).isEqualTo( CompletionItemKind.Value );
+			assertThat( item.getTextEdit() ).isNotNull();
+			assertThat( item.getTextEdit().isLeft() ).isTrue();
+
+			TextEdit edit = item.getTextEdit().getLeft();
+			assertThat( edit.getNewText() ).isEqualTo( item.getLabel() );
+			assertThat( edit.getRange() ).isEqualTo( new Range( new Position( line, valueStartCol ), new Position( line, cursorCol ) ) );
+		}
+	}
+
 	/**
 	 * Helper method to get completions at a specific position
 	 */
 	private List<CompletionItem> getCompletionsAt( int line, int character ) {
+		return getCompletionsAt( templatePath, line, character );
+	}
+
+	/**
+	 * Helper method to get completions at a specific position in a given fixture file
+	 */
+	private List<CompletionItem> getCompletionsAt( Path path, int line, int character ) {
 		Position				position			= new Position( line, character );
 		CompletionParams		completionParams	= new CompletionParams();
-		TextDocumentIdentifier	td					= new TextDocumentIdentifier( templatePath.toUri().toString() );
+		TextDocumentIdentifier	td					= new TextDocumentIdentifier( path.toUri().toString() );
 		completionParams.setPosition( position );
 		completionParams.setTextDocument( td );
-		return pcp.getAvailableCompletions( templateFile.toURI(), completionParams );
+		return pcp.getAvailableCompletions( path.toUri(), completionParams );
 	}
 
 	/**
