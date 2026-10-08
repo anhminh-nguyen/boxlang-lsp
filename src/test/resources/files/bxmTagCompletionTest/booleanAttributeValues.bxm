@@ -9,3 +9,4 @@
 <!-- <bx:setting showDebugOutput=""> -->
 <bx:setting showDebugOutput="#">
 <div class="">
+<bx:setting    SHOWDEBUGOUTPUT     =     ""> 

@@ -302,6 +302,13 @@ public class BxmTagCompletionTest extends BaseTest {
 		assertNoBooleanValues( getCompletionsAt( booleanValuesPath, 10, 12 ) );
 	}
 
+	@Test
+	@DisplayName( "Should complete true/false when there is extra whitespace around the attribute name and equals sign" )
+	void testBooleanValueCompletionExtraWhitespace() {
+		// Line 11: <bx:setting    SHOWDEBUGOUT     =     "|">
+		assertBooleanValueCompletions( 11, 42, 42, List.of( "true", "false" ) );
+	}
+
 	/**
 	 * Assert that none of the completions are the boolean value suggestions.
 	 * Other rules may still contribute items in these positions, so only true/false are checked.
