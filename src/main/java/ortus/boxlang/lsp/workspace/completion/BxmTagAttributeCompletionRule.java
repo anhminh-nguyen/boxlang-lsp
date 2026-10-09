@@ -5,8 +5,11 @@ import java.util.stream.Stream;
 
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
+import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.TextEdit;
+import org.eclipse.lsp4j.jsonrpc.messages.Either;
 
-import org.eclipse.lsp4j.InsertTextFormat;
 import ortus.boxlang.lsp.workspace.rules.IRule;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.components.Attribute;
@@ -66,15 +69,20 @@ public class BxmTagAttributeCompletionRule implements IRule<CompletionFacts, Lis
 		} else if ( kind == CompletionContextKind.BXM_TAG_ATTRIBUTE_VALUE ) {
 
 			// Check if the attribute exists
-			String attributeName = context.getTriggerText();
+			String attributeName = context.getAttributeName();
 			if ( attributeName == null || attributeName.isEmpty() )
 				return;
+
+			// The edit replaces everything typed between the opening quote and the cursor
+			String		typedValue	= context.getTriggerText() == null ? "" : context.getTriggerText();
+			Position	cursor		= context.getCursorPosition();
+			Range		valueRange	= new Range( new Position( cursor.getLine(), cursor.getCharacter() - typedValue.length() ), cursor );
 
 			// Add attribute value completions
 			Stream.of( descriptor.getComponent().getDeclaredAttributes() )
 			    .filter( attr -> attr.name().toString().equalsIgnoreCase( attributeName ) )
 			    .findFirst()
-			    .ifPresent( targetAttr -> addAttributeValueCompletions( targetAttr, result ) );
+			    .ifPresent( targetAttr -> addAttributeValueCompletions( targetAttr, typedValue, valueRange, result ) );
 
 		}
 	}
@@ -134,22 +142,22 @@ public class BxmTagAttributeCompletionRule implements IRule<CompletionFacts, Lis
 	 * Evaluates the data type and populates completion result list with relevant values
 	 * This can be expanded for multiple different attribute value types
 	 */
-	private void addAttributeValueCompletions( Attribute attr, List<CompletionItem> result ) {
+	private void addAttributeValueCompletions( Attribute attr, String typedValue, Range valueRange, List<CompletionItem> result ) {
 		if ( attr.type().equalsIgnoreCase( "boolean" ) ) {
-			result.add( createAttributeValueCompletion( "true" ) );
-			result.add( createAttributeValueCompletion( "false" ) );
+			Stream.of( "true", "false" )
+			    .filter( value -> value.startsWith( typedValue.toLowerCase() ) )
+			    .forEach( value -> result.add( createAttributeValueCompletion( value, valueRange ) ) );
 		}
 	}
 
 	/**
-	 * Creates and returns a plain text completion item for a specific attribute value string.
+	 * Creates and returns a completion item for a specific attribute value string.
 	 */
-	private CompletionItem createAttributeValueCompletion( String str ) {
+	private CompletionItem createAttributeValueCompletion( String str, Range valueRange ) {
 		CompletionItem item = new CompletionItem();
 		item.setLabel( str );
 		item.setKind( CompletionItemKind.Value );
-		item.setInsertText( str );
-		item.setInsertTextFormat( InsertTextFormat.PlainText );
+		item.setTextEdit( Either.forLeft( new TextEdit( valueRange, str ) ) );
 		return item;
 	}
 

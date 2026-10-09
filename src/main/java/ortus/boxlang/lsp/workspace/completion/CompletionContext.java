@@ -57,6 +57,7 @@ public class CompletionContext {
 	private final int					argumentIndex;
 	private final Position				cursorPosition;
 	private final FileParseResult		fileParseResult;
+	private final String				attributeName;		// Attribute whose value is being completed (BXM only)
 
 	/**
 	 * Private constructor - use analyze() factory method
@@ -70,6 +71,20 @@ public class CompletionContext {
 	    int argumentIndex,
 	    Position cursorPosition,
 	    FileParseResult fileParseResult ) {
+		this( kind, triggerText, receiverText, containingMethodName, containingClassName, argumentIndex, cursorPosition, fileParseResult, null );
+	}
+
+	private CompletionContext(
+	    CompletionContextKind kind,
+	    String triggerText,
+	    String receiverText,
+	    String containingMethodName,
+	    String containingClassName,
+	    int argumentIndex,
+	    Position cursorPosition,
+	    FileParseResult fileParseResult,
+	    String attributeName ) {
+		this.attributeName			= attributeName;
 		this.kind					= kind;
 		this.triggerText			= triggerText;
 		this.receiverText			= receiverText;
@@ -123,13 +138,14 @@ public class CompletionContext {
 		if ( bxmTagAttrValueMatcher.find() && !isInsideInterpolation( bxmTagAttrValueMatcher.group( 4 ) ) ) {
 			return new CompletionContext(
 			    CompletionContextKind.BXM_TAG_ATTRIBUTE_VALUE,
-			    bxmTagAttrValueMatcher.group( 2 ), // Attribute name
+			    bxmTagAttrValueMatcher.group( 4 ), // Value typed so far
 			    bxmTagAttrValueMatcher.group( 1 ), // Tag name
 			    containingMethodName,
 			    containingClassName,
 			    -1,
 			    cursorPosition,
-			    fileParseResult
+			    fileParseResult,
+			    bxmTagAttrValueMatcher.group( 2 ) // Attribute name
 			);
 		}
 
@@ -677,6 +693,13 @@ public class CompletionContext {
 	 */
 	public String getReceiverText() {
 		return receiverText;
+	}
+
+	/**
+	 * Get the attribute name whose value is being completed (BXM_TAG_ATTRIBUTE_VALUE only).
+	 */
+	public String getAttributeName() {
+		return attributeName;
 	}
 
 	/**
