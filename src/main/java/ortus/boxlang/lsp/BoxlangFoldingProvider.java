@@ -1,5 +1,7 @@
 package ortus.boxlang.lsp;
 
+import org.antlr.v4.runtime.CharStreams;
+import org.antlr.v4.runtime.Token;
 import org.eclipse.lsp4j.FoldingRange;
 import org.eclipse.lsp4j.FoldingRangeKind;
 import ortus.boxlang.compiler.ast.BoxClass;
@@ -8,6 +10,7 @@ import ortus.boxlang.compiler.ast.comment.BoxMultiLineComment;
 import ortus.boxlang.compiler.ast.statement.*;
 import ortus.boxlang.lsp.workspace.FileParseResult;
 import ortus.boxlang.lsp.workspace.ProjectContextProvider;
+import ortus.boxlang.parser.antlr.BoxLexer;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -52,43 +55,64 @@ public class BoxlangFoldingProvider {
 			addMultilineRange( ranges, node );
 		}
 		for ( BoxIfElse node : ifElses ) {
-			addMultilineRange( ranges, node );
+			addMultilineRange( ranges, node.getThenBody() );
+			addMultilineRange( ranges, node.getElseBody() );
 		}
 		for ( BoxForIndex node : forIndex ) {
-			addMultilineRange( ranges, node );
+			addMultilineRange( ranges, node.getBody() );
 		}
 		for ( BoxForIn node : forIns ) {
-			addMultilineRange( ranges, node );
+			addMultilineRange( ranges, node.getBody() );
 		}
 		for ( BoxWhile node : whiles ) {
-			addMultilineRange( ranges, node );
+			addMultilineRange( ranges, node.getBody() );
 		}
 		for ( BoxMultiLineComment node : multiLineComments ) {
-
-			if ( node.getPosition() == null )
-				continue;
-
-			FoldingRange commentRange = new FoldingRange();
-
-			commentRange.setStartLine( node.getPosition().getStart().getLine() - 1 );
-			commentRange.setEndLine( node.getPosition().getEnd().getLine() - 1 );
-			commentRange.setKind( FoldingRangeKind.Comment );
-
-			ranges.add( commentRange );
+			addMultilineRange( ranges, node );
 		}
 
 		return ranges;
 	}
 
 	private static void addMultilineRange( List<FoldingRange> ranges, BoxNode node ) {
-		if ( node.getPosition() == null )
+		if ( ! ( node instanceof BoxStatementBlock || node instanceof BoxClass || node instanceof BoxFunctionDeclaration
+		    || node instanceof BoxMultiLineComment ) || node.getPosition() == null )
 			return;
 
 		int	startLine	= node.getPosition().getStart().getLine() - 1;
 		int	endLine		= node.getPosition().getEnd().getLine() - 1;
 
+		// Class/function positions include their headers; match the final body brace using syntax tokens.
+		if ( node instanceof BoxClass || node instanceof BoxFunctionDeclaration ) {
+			if ( node.getSourceText() == null )
+				return;
+			BoxLexer lexer = new BoxLexer( CharStreams.fromString( node.getSourceText() ) );
+			lexer.pushMode( BoxLexer.DEFAULT_SCRIPT_MODE );
+			var tokens = lexer.getAllTokens().stream().filter( token -> token.getChannel() == Token.DEFAULT_CHANNEL ).toList();
+			if ( tokens.isEmpty() || tokens.getLast().getType() != BoxLexer.RBRACE )
+				return;
+
+			int	lineOffset	= startLine - 1;
+			int	depth		= 0;
+			startLine	= -1;
+			endLine		= lineOffset + tokens.getLast().getLine();
+			for ( Token token : tokens.reversed() ) {
+				if ( token.getType() == BoxLexer.RBRACE ) {
+					depth++;
+				} else if ( token.getType() == BoxLexer.LBRACE && --depth == 0 ) {
+					startLine = lineOffset + token.getLine();
+					break;
+				}
+			}
+			if ( startLine < 0 )
+				return;
+		}
+
 		if ( endLine > startLine ) {
-			ranges.add( new FoldingRange( startLine, endLine ) );
+			FoldingRange range = new FoldingRange( startLine, endLine );
+			if ( node instanceof BoxMultiLineComment )
+				range.setKind( FoldingRangeKind.Comment );
+			ranges.add( range );
 		}
 	}
 }
