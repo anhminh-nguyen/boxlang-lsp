@@ -14,8 +14,11 @@ import ortus.boxlang.parser.antlr.BoxLexer;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class BoxlangFoldingProvider {
 
@@ -71,7 +74,23 @@ public class BoxlangFoldingProvider {
 			addMultilineRange( ranges, node );
 		}
 
-		return ranges;
+		return finalizeRanges( ranges );
+	}
+
+	// End a code fold one line early when its closing-brace line starts another fold
+	// so collapsing it does not hide that line or cross the next fold.
+	// Also uses a LinkedHashSet to drop duplicate ranges and keep ranges in order they were added.
+	// Refer to FoldingRangeTest.foldsIfAndElseBodiesSeparately test to see it in use.
+	private static List<FoldingRange> finalizeRanges( List<FoldingRange> ranges ) {
+		Set<Integer>		startLines	= ranges.stream().map( FoldingRange::getStartLine ).collect( Collectors.toSet() );
+		Set<FoldingRange>	result		= new LinkedHashSet<>();
+		for ( FoldingRange range : ranges ) {
+			if ( range.getKind() == null && startLines.contains( range.getEndLine() ) )
+				range.setEndLine( range.getEndLine() - 1 );
+			if ( range.getEndLine() > range.getStartLine() )
+				result.add( range );
+		}
+		return new ArrayList<>( result );
 	}
 
 	private static void addMultilineRange( List<FoldingRange> ranges, BoxNode node ) {
@@ -86,8 +105,10 @@ public class BoxlangFoldingProvider {
 		if ( node instanceof BoxClass || node instanceof BoxFunctionDeclaration ) {
 			if ( node.getSourceText() == null )
 				return;
+
 			BoxLexer lexer = new BoxLexer( CharStreams.fromString( node.getSourceText() ) );
 			lexer.pushMode( BoxLexer.DEFAULT_SCRIPT_MODE );
+
 			var tokens = lexer.getAllTokens().stream().filter( token -> token.getChannel() == Token.DEFAULT_CHANNEL ).toList();
 			if ( tokens.isEmpty() || tokens.getLast().getType() != BoxLexer.RBRACE )
 				return;
@@ -96,6 +117,7 @@ public class BoxlangFoldingProvider {
 			int	depth		= 0;
 			startLine	= -1;
 			endLine		= lineOffset + tokens.getLast().getLine();
+
 			for ( Token token : tokens.reversed() ) {
 				if ( token.getType() == BoxLexer.RBRACE ) {
 					depth++;

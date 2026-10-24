@@ -67,6 +67,8 @@ class FoldingRangeTest extends BaseTest {
 		    .containsExactly( new FoldingRange( 1, 3 ) );
 	}
 
+	// A fold whose closing-brace line starts another fold ends one line early, so collapsing it keeps "} else {" visible.
+	// Prevents the if statement block from getting a FoldingRange from 0-2, which would cause it to fold the else block in it.
 	@Test
 	void foldsIfAndElseBodiesSeparately() throws Exception {
 		assertThat( folds( "test.bxs", """
@@ -75,7 +77,30 @@ class FoldingRangeTest extends BaseTest {
 		                               } else {
 		                                   writeOutput( 2 );
 		                               }
-		                               """ ) ).containsExactly( new FoldingRange( 0, 2 ), new FoldingRange( 2, 4 ) );
+		                               """ ) ).containsExactly( new FoldingRange( 0, 1 ), new FoldingRange( 2, 4 ) );
+	}
+
+	@Test
+	void foldsElseIfChainWithoutSharingLines() throws Exception {
+		assertThat( folds( "test.bxs", """
+		                               if ( first ) {
+		                                   writeOutput( 1 );
+		                               } else if ( second ) {
+		                                   writeOutput( 2 );
+		                               } else {
+		                                   writeOutput( 3 );
+		                               }
+		                               """ ) ).containsExactly( new FoldingRange( 0, 1 ), new FoldingRange( 2, 3 ), new FoldingRange( 4, 6 ) );
+	}
+
+	// This test excludes duplicate ranges, so that two FoldingRanges from 0-2 don't get added.
+	@Test
+	void collapsesDuplicateRangesFromBlocksSharingLines() throws Exception {
+		assertThat( folds( "test.bxs", """
+		                               if ( outer ) { if ( inner ) {
+		                                   writeOutput( 1 );
+		                               } }
+		                               """ ) ).containsExactly( new FoldingRange( 0, 2 ) );
 	}
 
 	@ParameterizedTest
