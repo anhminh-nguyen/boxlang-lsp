@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import org.eclipse.lsp4j.ClientCapabilities;
 import org.eclipse.lsp4j.FoldingRange;
@@ -18,6 +19,8 @@ import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import ortus.boxlang.lsp.formatting.FormattingCapabilityCoordinator;
@@ -244,6 +247,21 @@ class FoldingRangeTest extends BaseTest {
 		} finally {
 			ProjectContextProvider.getInstance().remove( uri );
 		}
+	}
+
+	// Folding is scoped to BoxLang script and class files, so other BoxLang/CFML files get no folds even with foldable code.
+	@ParameterizedTest( name = "{0}" )
+	@MethodSource( "nonTargetFiles" )
+	void returnsNoFoldsOutsideBxAndBxsFiles( String filename, String source ) throws Exception {
+		assertThat( folds( filename, source ) ).isEmpty();
+	}
+
+	static Stream<Arguments> nonTargetFiles() {
+		return Stream.of(
+		    Arguments.of( "Test.cfc", "component {\n    function run() {\n        return 1;\n    }\n}\n" ),
+		    Arguments.of( "test.cfs", "function run() {\n    return 1;\n}\n" ),
+		    Arguments.of( "test.bxm", "<bx:script>\nfunction run() {\n    return 1;\n}\n</bx:script>\n" ),
+		    Arguments.of( "test.cfm", "<cfscript>\nfunction run() {\n    return 1;\n}\n</cfscript>\n" ) );
 	}
 
 	private static FoldingRange commentFold( int startLine, int endLine ) {

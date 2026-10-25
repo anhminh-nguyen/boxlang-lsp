@@ -26,10 +26,15 @@ public class BoxlangFoldingProvider {
 	// Finds all folding ranges within a document
 	public static List<FoldingRange> getFoldingRanges( URI documentURI ) {
 
-		List<FoldingRange>			ranges			= new ArrayList<>();
+		List<FoldingRange>	ranges	= new ArrayList<>();
+
+		// Folding currently targets BoxLang class (.bx) and script (.bxs) files only
+		String				uri		= documentURI.toString();
+		if ( !uri.endsWith( ".bx" ) && !uri.endsWith( ".bxs" ) )
+			return ranges;
 
 		// Find the specific document the user is on right now
-		Optional<FileParseResult>	parseResultOpt	= ProjectContextProvider.getInstance().getLatestFileParseResultPublic( documentURI );
+		Optional<FileParseResult> parseResultOpt = ProjectContextProvider.getInstance().getLatestFileParseResultPublic( documentURI );
 		if ( parseResultOpt.isEmpty() )
 			return ranges;
 
