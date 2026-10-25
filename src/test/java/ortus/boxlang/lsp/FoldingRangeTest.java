@@ -11,11 +11,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import org.eclipse.lsp4j.ClientCapabilities;
+import org.eclipse.lsp4j.DidChangeTextDocumentParams;
+import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.FoldingRange;
 import org.eclipse.lsp4j.FoldingRangeKind;
 import org.eclipse.lsp4j.FoldingRangeRequestParams;
 import org.eclipse.lsp4j.InitializeParams;
+import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
+import org.eclipse.lsp4j.TextDocumentItem;
+import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -247,6 +252,80 @@ class FoldingRangeTest extends BaseTest {
 		} finally {
 			ProjectContextProvider.getInstance().remove( uri );
 		}
+	}
+
+	@ParameterizedTest( name = "{0}" )
+	@MethodSource( "incompleteSources" )
+	void incompleteStringOrCommentDoesNotThrowOrInventClosingBrace( String label, String source ) throws Exception {
+		URI uri = Files.writeString( tempDir.resolve( "incomplete.bxs" ), source ).toUri();
+		try {
+			assertThat( requestFolds( uri ) ).isEmpty();
+		} finally {
+			ProjectContextProvider.getInstance().remove( uri );
+		}
+	}
+
+	static Stream<Arguments> incompleteSources() {
+		return Stream.of(
+		    Arguments.of( "unclosed string", "function broken() {\n    x = \"abc;\n}\n" ),
+		    Arguments.of( "unclosed block comment", "function broken() {\n    /* never closed\n}\n" ) );
+	}
+
+	// Folds must come from the editor's unsaved text, not the file on disk, and must update after each edit.
+	@Test
+	void foldsFollowUnsavedEdits() throws Exception {
+		// The saved file has nothing to fold, so any fold must come from the editor's text
+		Path	path	= tempDir.resolve( "edited.bxs" );
+		String	uri		= Files.writeString( path, "x = 1;\n" ).toUri().toString();
+		try {
+			// open the file with unsaved text
+			service.didOpen( new DidOpenTextDocumentParams( new TextDocumentItem( uri, "boxlang", 1, """
+			                                                                                         function first() {
+			                                                                                             return 1;
+			                                                                                         }
+			                                                                                         """ ) ) );
+			assertThat( requestFolds( URI.create( uri ) ) ).containsExactly( new FoldingRange( 0, 2 ) );
+
+			// make an edit to the file without saving
+			changeDocument( uri, 2, """
+			                        function first() {
+
+
+			                        	return 1;
+			                        }
+			                        while ( ready ) {
+			                        	writeOutput( 1 );
+			                        }
+			                        """ );
+			assertThat( requestFolds( URI.create( uri ) ) ).containsExactly( new FoldingRange( 0, 4 ), new FoldingRange( 5, 7 ) );
+		} finally {
+			ProjectContextProvider.getInstance().remove( URI.create( uri ) );
+		}
+	}
+
+	// While typing, the code is briefly incomplete: folds must disappear rather than go stale or crash, then return once it is finished.
+	@Test
+	void incompleteEditReturnsNoFoldsUntilCodeIsFinished() throws Exception {
+		String uri = Files.writeString( tempDir.resolve( "typing.bxs" ), "x = 1;\n" ).toUri().toString();
+		try {
+			service.didOpen( new DidOpenTextDocumentParams( new TextDocumentItem( uri, "boxlang", 1, "function f() {\n    return 1;\n}\n" ) ) );
+			assertThat( requestFolds( URI.create( uri ) ) ).containsExactly( new FoldingRange( 0, 2 ) );
+
+			// the closing brace has been deleted mid-edit
+			changeDocument( uri, 2, "function f() {\n    return 1;\n" );
+			assertThat( requestFolds( URI.create( uri ) ) ).isEmpty();
+
+			// the code is finished again, one line longer than before
+			changeDocument( uri, 3, "function f() {\n    var x = 1;\n    return x;\n}\n" );
+			assertThat( requestFolds( URI.create( uri ) ) ).containsExactly( new FoldingRange( 0, 3 ) );
+		} finally {
+			ProjectContextProvider.getInstance().remove( URI.create( uri ) );
+		}
+	}
+
+	private void changeDocument( String uri, int version, String text ) {
+		service.didChange( new DidChangeTextDocumentParams( new VersionedTextDocumentIdentifier( uri, version ),
+		    List.of( new TextDocumentContentChangeEvent( text ) ) ) );
 	}
 
 	// Folding is scoped to BoxLang script and class files, so other BoxLang/CFML files get no folds even with foldable code.
