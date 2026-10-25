@@ -67,6 +67,29 @@ class FoldingRangeTest extends BaseTest {
 		    .containsExactly( new FoldingRange( 1, 3 ) );
 	}
 
+	// The "{}" default value comes before the body's brace, so the fold must start at the body's "{" on line 3.
+	@Test
+	void startsFoldAtBodyBraceAfterMultilineSignature() throws Exception {
+		assertThat( folds( "test.bxs", """
+		                               function example(
+		                                   a,
+		                                   b = {}
+		                               ) {
+		                                   return 1;
+		                               }
+		                               """ ) ).containsExactly( new FoldingRange( 3, 5 ) );
+	}
+
+	@Test
+	void startsClassFoldAtOpeningBraceOnNextLine() throws Exception {
+		assertThat( folds( "Test.bx", """
+		                              class extends="Base"
+		                              {
+		                                  x = 1;
+		                              }
+		                              """ ) ).containsExactly( new FoldingRange( 1, 3 ) );
+	}
+
 	// A fold whose closing-brace line starts another fold ends one line early, so collapsing it keeps "} else {" visible.
 	// Prevents the if statement block from getting a FoldingRange from 0-2, which would cause it to fold the else block in it.
 	@Test
@@ -136,6 +159,12 @@ class FoldingRangeTest extends BaseTest {
 	void foldsLoopBodies( String header ) throws Exception {
 		assertThat( folds( "test.bxs", header + " {\n    writeOutput( 1 );\n}\n" ) )
 		    .containsExactly( new FoldingRange( 0, 2 ) );
+	}
+
+	@ParameterizedTest
+	@ValueSource( strings = { "if ( ready )", "for ( i = 0; i < 3; i++ )", "for ( item in items )", "while ( ready )" } )
+	void skipsBracelessMultilineBodies( String header ) throws Exception {
+		assertThat( folds( "test.bxs", header + "\n    writeOutput(\n        1\n    );\n" ) ).isEmpty();
 	}
 
 	@Test
