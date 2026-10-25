@@ -93,6 +93,34 @@ class FoldingRangeTest extends BaseTest {
 		                               """ ) ).containsExactly( new FoldingRange( 0, 1 ), new FoldingRange( 2, 3 ), new FoldingRange( 4, 6 ) );
 	}
 
+	// A braceless else gets no fold of its own, but "} else" still continues the if, so collapsing the if must keep that line visible.
+	@Test
+	void endsIfFoldBeforeBracelessElse() throws Exception {
+		assertThat( folds( "test.bxs", """
+		                               if ( ready ) {
+		                                   writeOutput( 1 );
+		                               } else
+		                                   writeOutput( 2 );
+		                               """ ) ).containsExactly( new FoldingRange( 0, 1 ) );
+	}
+
+	@Test
+	void endsIfFoldBeforeBracelessElseInsideClassMethod() throws Exception {
+		assertThat( folds( "Greeter.bx", """
+		                                 class {
+		                                     /* one-liner */
+		                                     function greet( opts = {} )
+		                                     {
+		                                         var s = "}";
+		                                         if ( a ) {
+		                                             return s;
+		                                         } else
+		                                             return "";
+		                                     }
+		                                 }
+		                                 """ ) ).containsExactly( new FoldingRange( 0, 10 ), new FoldingRange( 3, 9 ), new FoldingRange( 5, 6 ) );
+	}
+
 	// This test excludes duplicate ranges, so that two FoldingRanges from 0-2 don't get added.
 	@Test
 	void collapsesDuplicateRangesFromBlocksSharingLines() throws Exception {
@@ -117,6 +145,45 @@ class FoldingRangeTest extends BaseTest {
 
 		assertThat( folds( "test.bxs", "/*\n * comment with unmatched {\n */\nvalue = 1;\n" ) )
 		    .containsExactly( comment );
+	}
+
+	// The stray "}" sits inside the function body, where the function fold's brace matcher has to skip it.
+	@Test
+	void ignoresBracesInsideBlockCommentInFunctionBody() throws Exception {
+		assertThat( folds( "test.bxs", """
+		                               function example() {
+		                                   /*
+		                                    * } stray brace
+		                                    */
+		                                   return 1;
+		                               }
+		                               """ ) ).containsExactly( new FoldingRange( 0, 5 ), commentFold( 1, 3 ) );
+	}
+
+	@Test
+	void foldsBlockCommentInsideClassBody() throws Exception {
+		assertThat( folds( "Test.bx", """
+		                              class {
+		                                  /*
+		                                   * class notes
+		                                   */
+		                                  function run() {
+		                                      return 1;
+		                                  }
+		                              }
+		                              """ ) ).containsExactly( new FoldingRange( 0, 7 ), new FoldingRange( 4, 6 ), commentFold( 1, 3 ) );
+	}
+
+	@Test
+	void foldsCommentAboveFunction() throws Exception {
+		assertThat( folds( "test.bxs", """
+		                               /**
+		                                * Runs it.
+		                                */
+		                               function run() {
+		                                   return 1;
+		                               }
+		                               """ ) ).containsExactly( commentFold( 0, 2 ), new FoldingRange( 3, 5 ) );
 	}
 
 	@Test
@@ -148,6 +215,12 @@ class FoldingRangeTest extends BaseTest {
 		} finally {
 			ProjectContextProvider.getInstance().remove( uri );
 		}
+	}
+
+	private static FoldingRange commentFold( int startLine, int endLine ) {
+		FoldingRange range = new FoldingRange( startLine, endLine );
+		range.setKind( FoldingRangeKind.Comment );
+		return range;
 	}
 
 	private List<FoldingRange> folds( String filename, String source ) throws Exception {

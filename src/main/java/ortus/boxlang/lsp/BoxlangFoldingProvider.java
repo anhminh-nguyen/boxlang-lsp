@@ -14,6 +14,7 @@ import ortus.boxlang.parser.antlr.BoxLexer;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -74,23 +75,54 @@ public class BoxlangFoldingProvider {
 			addMultilineRange( ranges, node );
 		}
 
-		return finalizeRanges( ranges );
+		return finalizeRanges( ranges, findElseContinuationLines( root ) );
 	}
 
-	// End a code fold one line early when its closing-brace line starts another fold
-	// so collapsing it does not hide that line or cross the next fold.
+	// End a code fold one line early when its closing-brace line starts another fold or continues
+	// with "else" (e.g. "} else" before a braceless else body), so collapsing it does not hide that line or cross the next fold.
 	// Also uses a LinkedHashSet to drop duplicate ranges and keep ranges in order they were added.
-	// Refer to FoldingRangeTest.foldsIfAndElseBodiesSeparately test to see it in use.
-	private static List<FoldingRange> finalizeRanges( List<FoldingRange> ranges ) {
+	// Refer to FoldingRangeTest.foldsIfAndElseBodiesSeparately and endsIfFoldBeforeBracelessElse tests to see it in use.
+	private static List<FoldingRange> finalizeRanges( List<FoldingRange> ranges, Set<Integer> elseContinuationLines ) {
 		Set<Integer>		startLines	= ranges.stream().map( FoldingRange::getStartLine ).collect( Collectors.toSet() );
 		Set<FoldingRange>	result		= new LinkedHashSet<>();
 		for ( FoldingRange range : ranges ) {
-			if ( range.getKind() == null && startLines.contains( range.getEndLine() ) )
-				range.setEndLine( range.getEndLine() - 1 );
+			int endLine = range.getEndLine();
+			if ( range.getKind() == null && ( startLines.contains( endLine ) || elseContinuationLines.contains( endLine ) ) )
+				range.setEndLine( endLine - 1 );
 			if ( range.getEndLine() > range.getStartLine() )
 				result.add( range );
 		}
 		return new ArrayList<>( result );
+	}
+
+	// Finds lines whose code starts with one or more closing braces followed by a "else" -- e.g. "} else".
+	// Needed to prevent a braceless "else" from being folded into an if statement.
+	// Uses syntax tokens so braces and keywords inside strings and comments are ignored.
+	private static Set<Integer> findElseContinuationLines( BoxNode root ) {
+		Set<Integer> lines = new HashSet<>();
+		if ( root.getSourceText() == null || root.getPosition() == null )
+			return lines;
+
+		BoxLexer lexer = new BoxLexer( CharStreams.fromString( root.getSourceText() ) );
+		lexer.pushMode( BoxLexer.DEFAULT_SCRIPT_MODE );
+
+		int		lineOffset	= root.getPosition().getStart().getLine() - 2;
+		int		currentLine	= -1;
+		boolean	onlyBraces	= false;
+		for ( Token token : lexer.getAllTokens() ) {
+			if ( token.getChannel() != Token.DEFAULT_CHANNEL )
+				continue;
+			// First code token on a new line: track whether the line so far is only closing braces
+			if ( token.getLine() != currentLine ) {
+				currentLine	= token.getLine();
+				onlyBraces	= token.getType() == BoxLexer.RBRACE;
+				continue;
+			}
+			if ( onlyBraces && token.getType() == BoxLexer.ELSE )
+				lines.add( lineOffset + token.getLine() );
+			onlyBraces = onlyBraces && token.getType() == BoxLexer.RBRACE;
+		}
+		return lines;
 	}
 
 	private static void addMultilineRange( List<FoldingRange> ranges, BoxNode node ) {
@@ -109,6 +141,7 @@ public class BoxlangFoldingProvider {
 			BoxLexer lexer = new BoxLexer( CharStreams.fromString( node.getSourceText() ) );
 			lexer.pushMode( BoxLexer.DEFAULT_SCRIPT_MODE );
 
+			// ignores comments and whitespaces (those are on a hidden channel)
 			var tokens = lexer.getAllTokens().stream().filter( token -> token.getChannel() == Token.DEFAULT_CHANNEL ).toList();
 			if ( tokens.isEmpty() || tokens.getLast().getType() != BoxLexer.RBRACE )
 				return;
